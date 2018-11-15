@@ -401,12 +401,16 @@ void *mm_malloc(size_t size) {
     removeFreeBlock(ptrFreeBlock);
 
     //if there's extra space split the block
-   if((blockSize-reqSize)>MIN_BLOCK_SIZE){
-       /*make a pointer to the block that follows the newly allocated block*/
+   if((blockSize >= reqSize) && (blockSize >= MIN_BLOCK_SIZE){
+       /*make a pointer to the free block that will the newly allocated block*/
        BlockInfo *nextFreeBlock= (BlockInfo *)UNSCALED_POINTER_ADD(ptrFreeBlock, blockSize);
 
+       /*update header-> size: blocksize-reqsize, preceding block used: yes, tag used: no*/
+       nextFreeBlock->sizeAndTags= ((blockSize-reqSize) | TAG_PRECEDING_USED) & ~(TAG_USED);
+       /*change the block size to be the blockSize-size of free block*/
+       blockSize -= SIZE(nextFreeBlock->sizeAndTags);
 
-
+       insertFreeBlock(nextFreeBlock);
 
 
    }
@@ -419,9 +423,11 @@ void *mm_malloc(size_t size) {
         
    }
 
+   /* allocated block  */
+    ptrFreeBlock->sizeAndTags = blockSize | TAG_USED;
 
 
-    return NULL;
+    return ptrFreeBlock;
 }
 
 /* Free the block referenced by ptr. */
