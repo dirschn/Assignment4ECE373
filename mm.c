@@ -1,4 +1,11 @@
-/*-------------------------------------------------------------------
+/*--------------------------------------------------------------------
+ * Names:
+ * Nicholas Dirschel
+ * Ethan Hart
+ */
+
+
+ /*-------------------------------------------------------------------
  * Lab 5 Starter code:                                                                            
  *        single doubly-linked free block list with LIFO policy                                   
  *        with support for coalescing adjacent free blocks  
@@ -316,7 +323,7 @@ int mm_init() {
     size_t initSize = WORD_SIZE + MIN_BLOCK_SIZE + WORD_SIZE;
     size_t totalSize;
     void *mem_sbrk_result = mem_sbrk(initSize);
-    z printf("mem_sbrk returned %p\n", mem_sbrk_result);
+    printf("mem_sbrk returned %p\n", mem_sbrk_result);
     if ((ssize_t) mem_sbrk_result == -1) {
         printf("ERROR: mem_sbrk failed in mm_init, returning %p\n",
                mem_sbrk_result);
@@ -395,39 +402,53 @@ void *mm_malloc(size_t size) {
         ptrFreeBlock = searchFreeList(reqSize); //re-search
     }
 
+    //find out if the preceding block is in use
+    precedingBlockUseTag = ptrFreeBlock->sizeAndTags & TAG_PRECEDING_USED;
+
     //check size of block
     blockSize = SIZE(ptrFreeBlock->sizeAndTags);
-    //remove free block from list
+    //remove the block
     removeFreeBlock(ptrFreeBlock);
 
-    //if there's extra space split the block
-   if((blockSize >= reqSize) && (blockSize >= MIN_BLOCK_SIZE){
-       /*make a pointer to the free block that will the newly allocated block*/
-       BlockInfo *nextFreeBlock= (BlockInfo *)UNSCALED_POINTER_ADD(ptrFreeBlock, blockSize);
 
-       /*update header-> size: blocksize-reqsize, preceding block used: yes, tag used: no*/
-       nextFreeBlock->sizeAndTags= ((blockSize-reqSize) | TAG_PRECEDING_USED) & ~(TAG_USED);
-       /*change the block size to be the blockSize-size of free block*/
-       blockSize -= SIZE(nextFreeBlock->sizeAndTags);
-
-       insertFreeBlock(nextFreeBlock);
+    //if blockSize - reqSize (the amount of extra space in the returned block) is big enough to be a free block, split it
+    if ((blockSize - reqSize) > MIN_BLOCK_SIZE) {
 
 
-   }
-   //if there isn't extra space, don't split it
-   else{
-       /*make a pointer to the block that follows the newly allocated block*/
-        BlockInfo *nextBlock= (BlockInfo *)UNSCALED_POINTER_ADD(ptrFreeBlock, blockSize);
+        //set ptrFreeBlock size to reqSize and set the value of it's preceding block's use
+        ptrFreeBlock->sizeAndTags = (reqSize | precedingBlockUseTag);
+
+        /*set header for allocated block*/
+        *((int *) UNSCALED_POINTER_ADD(ptrFreeBlock, (reqSize - WORD_SIZE))) = reqSize;
+
+        /*make a pointer to the free block of remaining space*/
+        BlockInfo *newFreeBlock = (BlockInfo *) UNSCALED_POINTER_ADD(ptrFreeBlock, reqSize);
+
+        /*update header-> size: blocksize-reqsize, preceding block used: yes, tag used: no*/
+        newFreeBlock->sizeAndTags = (((blockSize - reqSize) | TAG_PRECEDING_USED) & ~(TAG_USED));
+
+        /*set boundary for free block block*/
+        *((int *) UNSCALED_POINTER_ADD(ptrFreeBlock, (blockSize - WORD_SIZE))) = blockSize - reqSize;
+
+        insertFreeBlock(newFreeBlock);
+
+
+    }
+        //if there isn't extra space, don't split it
+    else {
+        /*make a pointer to the block that follows the newly allocated block*/
+        BlockInfo *nextBlock = (BlockInfo *) UNSCALED_POINTER_ADD(ptrFreeBlock, blockSize);
         /*tell that block the block preceding it (ptrFreeBlock) is now used*/
         nextBlock->sizeAndTags |= TAG_PRECEDING_USED;
-        
-   }
+        /*set the block size to its true size after the size of the header*/
+        *((int *) UNSCALED_POINTER_ADD(ptrFreeBlock, (blockSize - WORD_SIZE))) = blockSize;
+    }
 
-   /* allocated block  */
-    ptrFreeBlock->sizeAndTags = blockSize | TAG_USED;
+    /* allocated block  */
+    ptrFreeBlock->sizeAndTags |= TAG_USED;
 
 
-    return ptrFreeBlock;
+    return ((void *) UNSCALED_POINTER_ADD(ptrFreeBlock, WORD_SIZE));
 }
 
 /* Free the block referenced by ptr. */
@@ -438,6 +459,32 @@ void mm_free(void *ptr) {
 
     // Implement mm_free.  You can change or remove the declaraions
     // above.  They are included as minor hints.
+
+    //ptr starts at payload, move to header
+    blockInfo = (BlockInfo *) UNSCALED_POINTER_SUB(ptr, WORD_SIZE);
+
+    //if block is not malloc'd return
+    if (((blockInfo->sizeAndTags) & (TAG_USED)) == 0)return;
+
+
+
+    //change payload size
+    payloadSize = SIZE(blockInfo->sizeAndTags);
+
+    //marks tag as unused
+    blockInfo->sizeAndTags &= (~TAG_USED);
+
+    //sets followingblock to sizeandtags of next block
+    followingBlock = (BlockInfo *) UNSCALED_POINTER_ADD(ptr, payloadSize);
+
+    //uses tag preceding bit mask to say preceding block is unused
+    followingBlock->sizeAndTags &= (~TAG_PRECEDING_USED);
+
+    //converts used block into free block
+    insertFreeBlock(blockInfo);
+
+    //coalesces
+    coalesceFreeBlock(blockInfo);
 
 }
 
